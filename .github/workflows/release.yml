@@ -1,0 +1,173 @@
+name: Release
+
+# Cuts the platform zips, attaches them to a GitHub Release, and pings the
+# catalog repo so subtitld.org sees the new version within minutes.
+#
+# Trigger: push a tag matching v*.*.* (e.g. `git tag v1.0.0 && git push --tags`).
+# The tag's leading `v` is stripped to form the version embedded in asset
+# filenames; manifest.json's `version` field must match.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  # Allow re-running a tag build from the UI without re-tagging.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)release (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write   # create the GitHub Release + upload assets
+
+jobs:
+  build:
+    strategy:
+      # Don't poison the whole release if one platform fails — let the
+      # others finish so the catalog at least sees partial coverage. The
+      # catalog rebuild is fine with a release that has only some zips.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform_suffix: linux-x86_64
+          - os: macos-latest
+            platform_suffix: macos-universal
+          - os: windows-latest
+            platform_suffix: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          # Strip leading `v` from the tag → version, and confirm the
+          # manifest agrees. A mismatch here means we'd ship a zip whose
+          # filename version doesn't match the manifest version, which the
+          # host would reject.
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          MANIFEST_VERSION=$(python -c "import json; print(json.load(open('manifest.json'))['version'])")
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::tag $TAG implies version $VERSION but manifest.json declares $MANIFEST_VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller piper-tts
+
+      - name: Build add-on bundle
+        run: pyinstaller piper-addon.spec --distpath dist/
+
+      - name: Pack zip
+        id: pack
+        shell: bash
+        run: |
+          set -e
+          VERSION="${{ steps.ver.outputs.version }}"
+          PLAT="${{ matrix.platform_suffix }}"
+          ZIP_NAME="piper-tts-${VERSION}-${PLAT}.zip"
+          # Layout inside the zip mirrors what the host expects to find at
+          # `~/.local/share/subtitld/addons/piper-tts/`:
+          #   manifest.json
+          #   bin/piper-addon (+ all PyInstaller deps)
+          #   LICENSE / README.md
+          STAGE="$RUNNER_TEMP/stage"
+          mkdir -p "$STAGE/bin"
+          cp -r dist/piper-addon/* "$STAGE/bin/"
+          cp manifest.json LICENSE README.md "$STAGE/"
+          (cd "$STAGE" && zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" .)
+          echo "zip_path=$GITHUB_WORKSPACE/$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Compute sha256 sidecar
+        shell: bash
+        run: |
+          # The catalog rebuild reads this sidecar to populate
+          # `downloads[].sha256` without re-downloading the zip itself.
+          # Format: `<digest>  <filename>` (the standard sha256sum layout).
+          ZIP="${{ steps.pack.outputs.zip_path }}"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$(basename "$ZIP")" > "${ZIP}.sha256"
+          else
+            shasum -a 256 "$(basename "$ZIP")" > "${ZIP}.sha256"
+          fi
+          cat "${ZIP}.sha256"
+
+      - name: Upload as workflow artifact
+        # Use artifacts so the release job (which collates all platforms)
+        # can pull from one place rather than juggling matrix outputs.
+        uses: actions/upload-artifact@v4
+        with:
+          name: zip-${{ matrix.platform_suffix }}
+          path: |
+            ${{ steps.pack.outputs.zip_path }}
+            ${{ steps.pack.outputs.zip_path }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Resolve tag
+        id: tagref
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          TAG="${{ steps.tagref.outputs.tag }}"
+          # Flatten matrix outputs: every artifact dir contains the .zip
+          # plus its .sha256 sidecar.
+          mapfile -t ASSETS < <(find artifacts -type f \( -name '*.zip' -o -name '*.sha256' \))
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-run case: replace assets in place.
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Automated release for piper-tts $TAG." \
+              "${ASSETS[@]}"
+          fi
+
+      - name: Trigger Subtitld catalog rebuild
+        env:
+          # Org-level fine-grained PAT scoped to `Contents: write` on
+          # Subtitld/addons-catalog only. Stored as an organization secret
+          # named SUBTITLD_BOT_TOKEN.
+          GH_TOKEN: ${{ secrets.SUBTITLD_BOT_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::SUBTITLD_BOT_TOKEN not set — catalog rebuild skipped (cron will pick this up within 6 h)"
+            exit 0
+          fi
+          gh api repos/Subtitld/addons-catalog/dispatches \
+            -f event_type=catalog-rebuild \
+            -F client_payload[addon]=piper-tts \
+            -F client_payload[tag]="${{ steps.tagref.outputs.tag }}"

@@ -1,0 +1,39 @@
+{
+  "manifest_version": 1,
+  "id": "piper-tts",
+  "version": "1.0.0",
+  "display_name": "Piper TTS (offline)",
+  "summary": "Lightweight offline neural TTS based on Piper. Models around 50 MB each.",
+  "author": "Subtitld add-on team",
+  "license": "MIT (add-on glue) + MIT (Piper) + per-model licenses (often CC-BY)",
+  "executable": "bin/piper-addon",
+  "protocol": 1,
+  "startup_timeout_sec": 30,
+  "platforms": ["linux", "macos", "windows"],
+  "tasks": ["tts.synthesize"],
+  "voices": [
+    {"id": "en_US-amy-medium", "language": "en-us", "display_name": "Amy (US English, medium)", "size_mb": 60},
+    {"id": "en_US-ryan-high",  "language": "en-us", "display_name": "Ryan (US English, high)",  "size_mb": 100},
+    {"id": "pt_BR-faber-medium", "language": "pt-br", "display_name": "Faber (Brazilian PT, medium)", "size_mb": 60},
+    {"id": "es_ES-davefx-medium", "language": "es-es", "display_name": "DaveFX (Castilian ES, medium)", "size_mb": 60},
+    {"id": "fr_FR-siwis-medium", "language": "fr-fr", "display_name": "Siwis (French, medium)", "size_mb": 60},
+    {"id": "de_DE-thorsten-medium", "language": "de-de", "display_name": "Thorsten (German, medium)", "size_mb": 60}
+  ],
+  "models": [
+    {"id": "en_US-amy-medium", "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx", "sha256": "TODO", "size_mb": 60, "bundled": false},
+    {"id": "en_US-amy-medium-config", "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json", "sha256": "TODO", "size_mb": 1, "bundled": false}
+  ],
+  "disk_required_mb": 200,
+  "ram_required_mb": 512,
+  "gpu": "none",
+  "config_schema": {
+    "fields": [
+      {
+        "key": "models_dir",
+        "type": "directory",
+        "label": "Piper model directory",
+        "help": "Folder where downloaded .onnx voices are stored. Defaults to ~/.local/share/subtitld/addons/piper-tts/models/"
+      }
+    ]
+  }
+}

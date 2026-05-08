@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.zip
+*.zip.sha256
+*.spec.bak
