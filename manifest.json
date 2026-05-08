@@ -5,7 +5,7 @@
   "display_name": "Piper TTS (offline)",
   "summary": "Lightweight offline neural TTS based on Piper. Models around 50 MB each.",
   "author": "Subtitld add-on team",
-  "license": "MIT (add-on glue) + MIT (Piper) + per-model licenses (often CC-BY)",
+  "license": "MIT (add-on glue) + GPL-3.0-or-later (Piper, OHF-voice/piper1-gpl) + per-model licenses (often CC-BY)",
   "executable": "bin/piper-addon",
   "protocol": 1,
   "startup_timeout_sec": 30,

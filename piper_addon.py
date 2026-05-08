@@ -86,12 +86,36 @@ _voice_cache: dict[str, object] = {}
 _voice_cache_lock = threading.Lock()
 
 
+def _addon_root() -> Path:
+    """Where the host installed this add-on (the directory holding
+    `manifest.json` and `bin/`).
+
+    The on-disk layout is:
+        <addon_root>/
+            manifest.json
+            bin/
+                piper-addon         ← exe (frozen) or just `python piper_addon.py` in dev
+                _internal/...       ← PyInstaller `--onedir` payload (frozen only)
+            models/<voice>/...
+
+    We need a path that works in both contexts:
+      - Frozen: `__file__` resolves into `bin/_internal/`, so going up two
+        levels lands on the add-on root.
+      - Source: `piper_addon.py` lives at the repo root during dev, so
+        `Path(__file__).parent` IS the root.
+    `sys.frozen` is the canonical PyInstaller marker.
+    """
+    if getattr(sys, 'frozen', False):
+        # `sys.executable` is `<addon_root>/bin/piper-addon`; up two = root.
+        return Path(sys.executable).resolve().parent.parent
+    return Path(__file__).resolve().parent
+
+
 def _models_dir() -> Path:
-    addon_dir = Path(__file__).resolve().parent
     env_override = os.environ.get('PIPER_ADDON_MODELS_DIR')
     if env_override:
         return Path(os.path.expandvars(os.path.expanduser(env_override)))
-    return addon_dir / 'models'
+    return _addon_root() / 'models'
 
 
 def _load_voice(voice_id: str):
@@ -141,11 +165,14 @@ def handle_tts_synthesize(rid: str, params: dict) -> None:
 
     emit_progress(rid, 0.1, f'Loaded voice {voice_id}')
 
-    # Piper writes raw PCM to a wave.Wave_write; stream into output_path.
+    # piper-tts ≥ 1.4 split the API: `synthesize()` is a generator yielding
+    # AudioChunks, `synthesize_wav()` is the convenience wrapper that writes
+    # them straight to a wave.Wave_write. We want the latter — same net
+    # effect as the pre-1.4 `synthesize(text, wf)` call.
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     try:
         with wave.open(output_path, 'wb') as wf:
-            voice.synthesize(text, wf)
+            voice.synthesize_wav(text, wf)
     except Exception as exc:
         log.exception('synthesize failed')
         emit_error(rid, 'internal', f'synthesize failed: {exc}')

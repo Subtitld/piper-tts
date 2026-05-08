@@ -1,7 +1,8 @@
 # Piper TTS add-on for Subtitld
 
-Lightweight neural TTS based on [Piper](https://github.com/rhasspy/piper).
-Each voice is ~50 MB; runs entirely offline on CPU.
+Lightweight neural TTS based on [Piper](https://github.com/OHF-voice/piper1-gpl)
+(the GPL-3 successor to the original `rhasspy/piper`). Each voice is
+~50 MB; runs entirely offline on CPU.
 
 ## Building
 
@@ -33,6 +34,9 @@ task: `tts.synthesize`.
 
 ## License
 
-The add-on glue (this repository's code) is MIT. Piper itself is MIT. Each
-downloaded voice has its own license — most are CC-BY but some are CC0 or
-custom — listed at <https://github.com/rhasspy/piper/blob/master/VOICES.md>.
+The add-on glue (this repository's code) is MIT. Piper itself is now
+GPL-3.0-or-later — the python wrapper we link against ships under that
+license, which is fine because we invoke it as a separate process rather
+than statically linking. Each downloaded voice has its own license —
+most are CC-BY but some are CC0 or custom — listed at
+<https://github.com/OHF-voice/piper1-gpl/blob/main/docs/VOICES.md>.
