@@ -45,7 +45,7 @@ except ImportError as exc:  # pragma: no cover
 
 PROTOCOL = 1
 ADDON_ID = 'piper-tts'
-VERSION = '1.0.0'
+VERSION = '1.0.1'
 
 
 # ---------------------------------------------------------------------------
@@ -246,12 +246,29 @@ def main() -> int:
             # No-op — Piper synthesize is a single sync call.
             log.info('cancel ignored (sync inference)')
             continue
+        if ftype == 'ready':
+            # Host's handshake ack. Carries `host`/`host_version`; we don't
+            # need either right now, but the frame must be tolerated rather
+            # than treated as an unknown request — emitting an error here
+            # would (a) write a frame without a valid `id` for the host to
+            # route, and (b) suggest to a debugging human that something
+            # is broken when it's actually the protocol working as designed.
+            log.info('ready from host (host_version=%s)', frame.get('host_version'))
+            continue
         if ftype == 'tts.synthesize':
             threading.Thread(
                 target=handle_tts_synthesize,
                 args=(rid, frame.get('params') or {}),
                 daemon=True,
             ).start()
+            continue
+
+        # Unsolicited control frames (i.e. ones without an `id`) shouldn't
+        # produce an error response — the host has nothing to correlate it
+        # with. Log and move on; only request-shaped frames get a real
+        # `bad_params` reply.
+        if not rid:
+            log.warning('ignoring unsolicited frame of type %r', ftype)
             continue
 
         emit_error(rid, 'bad_params', f'unknown request type: {ftype!r}')
