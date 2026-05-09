@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
   "id": "piper-tts",
-  "version": "1.1.0",
+  "version": "1.0.3",
   "display_name": "Piper TTS (offline)",
   "summary": "Lightweight offline neural TTS based on Piper. Models around 50 MB each.",
   "author": "Subtitld add-on team",
