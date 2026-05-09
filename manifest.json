@@ -11,6 +11,7 @@
   "startup_timeout_sec": 30,
   "platforms": ["linux", "macos", "windows"],
   "tasks": ["tts.synthesize"],
+  "languages": ["en-us", "pt-br", "es-es", "fr-fr", "de-de"],
   "voices": [
     {"id": "en_US-amy-medium", "language": "en-us", "display_name": "Amy (US English, medium)", "size_mb": 60},
     {"id": "en_US-ryan-high",  "language": "en-us", "display_name": "Ryan (US English, high)",  "size_mb": 100},
